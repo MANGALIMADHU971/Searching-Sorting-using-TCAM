@@ -1,0 +1,98 @@
+// TCAM Line Comparator Module
+module tcam_line22 #(
+    parameter KEY_WIDTH = 16
+)(
+    input [KEY_WIDTH-1:0] key,
+    input [KEY_WIDTH-1:0] stored_key,
+    input [KEY_WIDTH-1:0] xmask,
+    output match
+);
+    assign match = ~|((key ^ stored_key) & ~xmask);  // 1 if match, else 0
+endmodule
+
+// Sorting TCAM Array with Write, Search, and Sort
+module Sorting_22 #(
+    parameter KEY_WIDTH = 16,
+    parameter DEPTH = 16
+)(
+    input clk,
+    input rst,
+    input write_en,
+    input [$clog2(DEPTH)-1:0] write_addr,
+    input [KEY_WIDTH-1:0] write_data,
+    input [KEY_WIDTH-1:0] search_key,
+    input [KEY_WIDTH-1:0] xmask,
+    input search_en,
+    input sort_en,
+    output reg [$clog2(DEPTH)-1:0] match_addr,
+    output reg match_found
+);
+
+    reg [KEY_WIDTH-1:0] mem [0:DEPTH-1];
+    reg [KEY_WIDTH-1:0] sort_array [0:DEPTH-1];
+    reg [KEY_WIDTH-1:0] temp;
+    integer i, j;
+
+    wire match_lines [0:DEPTH-1];
+
+    // Reset and Write operations
+    always @(posedge clk) begin
+        if (rst) begin
+            for (i = 0; i < DEPTH; i = i + 1) begin
+                mem[i] <= 0;
+            end
+        end else if (write_en) begin
+            mem[write_addr] <= write_data;
+        end
+    end
+
+    // Sorting operation in a separate always block
+    always @(posedge clk) begin
+        if (sort_en) begin
+            // Copy original memory to temp
+            for (i = 0; i < DEPTH; i = i + 1)
+                sort_array[i] = mem[i];
+
+            // Bubble sort
+            for (i = 0; i < DEPTH-1; i = i + 1) begin
+                for (j = 0; j < DEPTH-1-i; j = j + 1) begin
+                    if (sort_array[j] > sort_array[j+1]) begin
+                        temp = sort_array[j];
+                        sort_array[j] = sort_array[j+1];
+                        sort_array[j+1] = temp;
+                    end
+                end
+            end
+
+            // Copy sorted values into sort_memory (using blocking assignment)
+            
+        end
+    end
+
+    // TCAM compare logic
+    genvar idx;
+    generate
+        for (idx = 0; idx < DEPTH; idx = idx + 1) begin: match_gen
+            tcam_line22 #(.KEY_WIDTH(KEY_WIDTH)) line_inst (
+                .key(search_key),
+                .stored_key(mem[idx]),  // Search still happens from original memory
+                .xmask(xmask),
+                .match(match_lines[idx])
+            );
+        end
+    endgenerate
+
+    // Match result logic
+    always @(*) begin
+        match_found = 0;
+        match_addr = 0;
+        if (search_en) begin
+            for (i = 0; i < DEPTH; i = i + 1) begin
+                if (match_lines[i] && !match_found) begin
+                    match_found = 1;
+                    match_addr = i[$clog2(DEPTH)-1:0];
+                end
+            end
+        end
+    end
+endmodule
